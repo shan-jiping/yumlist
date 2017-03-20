@@ -5,6 +5,7 @@ Created on 2015-8-16
 @author: shan.jiping
 '''
 import urllib  
+import urllib2
 import HTMLParser
 from datetime import datetime
 import os
@@ -13,8 +14,10 @@ from time import sleep
 import platform
 
 
-genurl="http://repo.percona.com/release/6/"
+#genurl="http://repo.percona.com/release/6/"
+genurl="http://download.ceph.com/rpm-hammer/el7/"
 #genurl="http://10.10.20.58/percona/"            #测试使用yum源  方便测试问题
+genpath="ceph_rpm-hammer/"
 urlindex=0
 yumurl=[]
 tmpmulu=[]
@@ -28,8 +31,9 @@ sysstr = platform.system()
 def get_list(url):
     global tmpfile
     global tmpmulu
-    page = urllib.urlopen(url)                                              # 打开URL  
+    page = urllib2.urlopen(url)                                              # 打开URL  
     data = page.read()                                                      # 读取URL内容  
+    print "url:"+url
     parser = MyHTMLParser()                                                 # 生成实例对象  
     parser.feed(data)
     parser.close()
@@ -53,28 +57,23 @@ class MyHTMLParser(HTMLParser.HTMLParser):                                      
                     if name == "href" and value!="../":
                         if len(value.split('/')) > 1:
                             tmpmulu.append(value)
-                            #print "add urlpath " + value
                         else:
                             tmpfile.append(value)
-                            #print "file" + value
                             
 def downloadlist():
+	#获取所有文件及目录列表  并调用downloadfile（url,filename） 这个方法下载文件
     global lim
     global urlindex
     while lim == True:
-        #print len(yumurl) ,urlindex
         if len(yumurl)>0 and len(yumurl) < urlindex +1 :
             lim=False
             break
         get_list(yumurl[urlindex])
         urlindex=urlindex + 1 
-    #print "yum" + str(yum)
-    #print yum.keys()
     f=open('tmp/yum.txt','a')
     for i in yum.keys():
         f.write('url: ' + str(i) + '\n')
         for l in yum[i]:
-            #print l
             f.write("    "+i + l + '\n')
     f.flush()
     f.close()
@@ -92,7 +91,14 @@ def df(url,filepath,filename):
     if(sysstr =="Windows"):
         urllib.urlretrieve(url, filepath+filename,callback)   
     elif(sysstr == "Linux"):
-        os.system('axel -n 5 -a --verbose ' + url + ' -o ' +filepath+filename)
+        for dt in range(1,3):
+            try:
+                os.system('axel -n 5 -a --verbose ' + url + ' -o ' +filepath+filename)
+                #urllib.urlretrieve(url, filepath+filename,callback)
+                break
+            except Exception,e:
+                print Exception,":",e,"dt:",dt
+        #os.system('axel -n 5 -a --verbose ' + url + ' -o ' +filepath+filename)
     else:
         print ("Other System tasks")
 
@@ -110,15 +116,24 @@ def callback(a,b,c):
     
     
 def downloadfile(url,filename):
-    filepath=url.replace(genurl,'').replace(filename,'')
+	#下载文件准备  根据url替换本地路径 并且判断文件大小是否和存在文件匹配，由于网络原因可能造成下载终止 需要重新执行
+	#df 是下载文件的方法
+    filepath=url.replace(genurl,genpath).replace(filename,'')
     dl=open('tmp/downfile.txt','a')
     if os.path.exists(filepath):
         pass
     else:
         os.makedirs(filepath)
         dl.write( "Create PATH " + filepath +'\n')
+    for dt in range(1,3):
+        try:
+            pagesize=urllib.urlopen(url).info()['Content-Length']
+            break
+        except Exception,e:
+            print Exception,":",e,"dt:",dt
+    if dt == 3 and pagesize:
+        exit()
         
-    pagesize=urllib.urlopen(url).info()['Content-Length']
 
     if os.path.exists(filepath+filename):
         LocalFileSize=os.path.getsize(filepath+filename)
@@ -154,7 +169,6 @@ def downloadfile(url,filename):
     
 if __name__ == "__main__":
     downloadlist()
-    #downloadfile('http://10.10.20.58/percona/RPMS/x86_64/Percona-Server-tokudb-56-5.6.22-rel71.0.el6.x86_64.rpm', 'Percona-Server-tokudb-56-5.6.22-rel71.0.el6.x86_64.rpm')
     f=open('tmp/yum.txt','a')
     f.write('==============================================================\n')
     f.write(' download done'+'\n')
